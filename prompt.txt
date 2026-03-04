@@ -1,0 +1,72 @@
+This is the dataset with all the files provided, study and analyse it completely and accurately,
+i want to write a proper and good research paper on this dataset,
+suggest what models and how many models and complete worflow to apply for best possible results ,
+suggest some good state of art and modern models that it can run on google colab,
+also giving the best results with proper hyperparameter tuning,
+first suggest workflow and everything then we can start implementing,
+
+I want to apply in total of 10 models, search the web for the same,
+I want to apply hybrid models as well as they achieve better results,
+u can search web and take suggestions and inspirations,
+create a detailed research specific colab file with proper excel exports in each step and high quality graphs, charts and visualizations.
+train the models with proper hyperparameter tuning as suited,
+create and run each cell, check for errors , imporve it and then move to the next,
+If a model does not perform well even after everything then remove the model
+
+This is the database, Take references from the codes also if you need
+ https://www.kaggle.com/datasets/girish17019/mobile-phone-defect-segmentation-dataset
+ https://www.kaggle.com/code/pratul007/hybrid-model-classification-resnet-vgg16-mobilenet
+ https://www.kaggle.com/code/prathamgrover/mobile-segmenation
+
+Download the dataset directly instead of uploading 
+import kagglehub
+
+# Download latest version
+path = kagglehub.dataset_download("girish17019/mobile-phone-defect-segmentation-dataset")
+
+print("Path to dataset files:", path)
+
+note it is necessary to run all the cells , check and fix errors as necessary and improve results if necessary
+
+keep everything simple so it runs on colab CPU, not too heavy
+
+I also want to use a database here so that i need not run the entire colab file again and agin,
+some kind of technology reagarding that i saw on web , index database or so by facebook please search
+
+Here are some of my suggestions
+ - PCA or SMOTE 
+ - DinoV2 an DinoV3 models if needed and then apply advanced models on it
+ - https://dinov2.metademolab.com/
+ - https://ai.meta.com/dinov3/
+ - Modern vision transformer architectures like DeiT or Swin Transformer
+
+Keep entire thing very simple
+Do not use models that take time I have very less time around 2 hours and have a colab CPU
+
+
+
+
+
+
+
+now start writing the research paper in simple words, extremely simple language,
+write it in such a way that it is ai free and plag free,
+write the paper in a research paper way,
+should be well detailed and technical according to the predictions made and the results and models used,
+write sections -
+
+Abstract (150 words)
+Introduction (10 paragraphs)
+Proposed method (1 paragraph each)
+	- Dataset used 
+	- Data Preprocessing
+	- Data Splitting
+	- Model Wokflow 
+	- Correlation Matrix 
+Technology Used (explanation of each model used, how and why was it used along with hyperparameters used) (1 paragraph each) 
+Evaluation Matrices (1 paragraph each)
+Results with tables and explanation (4 5 paragraphs)
+Conclusion (1 paragraph)
+Future work (1 paragraph)
+
+also include all other sections that u feel necessary accordig to the research and the notebook with figure charts etc

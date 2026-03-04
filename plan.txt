@@ -1,0 +1,141 @@
+Plan: Mobile Phone Defect Classification — 10-Model Comparative Study
+TL;DR
+Build a research-grade Google Colab notebook that performs 4-class defect classification (good / oil / scratch / stain) on the Mobile Phone Defect Segmentation Dataset (1,220 images) using 10 models spanning classic CNNs, modern Vision Transformers, self-supervised foundation models, and hybrid architectures. Address the severe class imbalance (20 good vs 400× defect) via SMOTE + heavy augmentation. Use FAISS (Facebook AI Similarity Search) to cache extracted feature embeddings to disk so the entire pipeline never needs full re-execution. Export all metrics to Excel and generate publication-quality visualizations for an IEEE/Springer conference paper.
+
+The 10 Models
+#	Model	Category	Params	Why
+1	VGG16	Baseline CNN	~138M	Classic reference, widely cited
+2	ResNet50	Baseline CNN	~25M	Skip connections, strong baseline
+3	MobileNetV2	Lightweight CNN	~3.4M	Depthwise-separable, mobile-grade
+4	EfficientNet-B0	NAS-optimized CNN	~5.3M	Compound scaling, SOTA efficiency
+5	DeiT-Small	Vision Transformer	~22M	Data-efficient ViT, attention maps
+6	Swin Transformer-Tiny	Hierarchical ViT	~28M	Shifted windows, local+global
+7	DINOv2-Small	Foundation Model (frozen)	~22M	Self-supervised, no fine-tuning needed
+8	ConvNeXt-Tiny	Modern CNN	~29M	Modernized ResNet rivaling ViTs
+9	Hybrid CNN Ensemble	Hybrid (ResNet50+VGG16+MobileNetV2)	Combined	Feature-level fusion, inspired by Kaggle reference
+10	DINOv2 + XGBoost	Hybrid (Foundation+ML)	~22M+ML	Frozen DINOv2 features → gradient boosting
+Steps
+Phase 0: Environment Setup & Dataset Download
+Install all dependencies in a single cell: kagglehub, torch, torchvision, timm (for DeiT/Swin/ConvNeXt), faiss-cpu, xgboost, scikit-learn, imbalanced-learn (SMOTE), openpyxl, matplotlib, seaborn, pandas
+Download dataset using kagglehub.dataset_download("girish17019/mobile-phone-defect-segmentation-dataset")
+Create results/ directory for all exports (Excel, plots, model checkpoints, FAISS indices)
+Phase 1: Exploratory Data Analysis (EDA)
+Scan all folders, build a master DataFrame with columns: filepath, label, class_name, image_size, file_format
+Generate and save visualizations:
+Class distribution bar chart (highlighting 20 vs 400 imbalance)
+Sample image grid: 3×4 grid showing 3 random images per class
+Image resolution histogram
+Mean pixel intensity per class (to reveal visual differences)
+Per-channel (RGB) distribution violin plots per class
+Export EDA summary to results/01_eda_summary.xlsx (class counts, stats)
+Phase 2: Data Preprocessing & Splitting
+Resize all images to 224×224 (standard for all models, CPU-friendly)
+Stratified train/validation/test split: 70/15/15 with fixed random_state=42
+Apply SMOTE (via imbalanced-learn) on extracted feature vectors of the good class in the training set to oversample from 14 → ~280 samples (matching ~70% of defect class train size)
+Define augmentation pipeline for training: RandomHorizontalFlip, RandomVerticalFlip, RandomRotation(15), ColorJitter(brightness=0.2, contrast=0.2), RandomAffine(degrees=0, translate=(0.1, 0.1)) — heavier augmentation for the good class
+Normalize using ImageNet stats: mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+Create PyTorch DataLoaders with batch_size=32
+Phase 3: FAISS Feature Caching System
+Build a FeatureCache utility class that:
+Takes a backbone model name + dataset split
+Extracts features from the penultimate layer of any backbone (frozen forward pass)
+Stores features as numpy arrays + builds a faiss.IndexFlatL2 index
+Saves to disk: results/faiss_cache/{model_name}_{split}_features.npy, results/faiss_cache/{model_name}_{split}_labels.npy, results/faiss_cache/{model_name}_{split}.index
+On subsequent runs, loads from disk instead of re-extracting (checks file existence)
+Pre-extract and cache features for all 8 backbone models (VGG16, ResNet50, MobileNetV2, EfficientNet-B0, DeiT-S, Swin-T, DINOv2-S, ConvNeXt-T) across train/val/test splits — this is a one-time cost
+This means the notebook can be re-run from any cell without re-executing prior cells
+Phase 4: PCA Visualization
+Apply PCA (n_components=50) then t-SNE (n_components=2) on DINOv2 features for a 2D feature space visualization colored by class — shows class separability
+Also generate PCA explained variance curve to show dimensionality
+Repeat for select other models (ResNet50, Swin-T) for comparison
+Export PCA results to results/02_pca_analysis.xlsx
+Phase 5: Model Training (Models 1–8)
+Each model follows the same template:
+20. Load pre-trained backbone from torchvision.models or timm with ImageNet weights
+21. Freeze backbone, replace classifier head with: Linear(features_dim, 256) → ReLU → Dropout(0.3) → Linear(256, 4)
+22. Hyperparameter grid (per model, tuned values):
+
+Model	LR	Optimizer	Scheduler	Epochs	Weight Decay	Frozen Epochs → Unfreeze
+VGG16	1e-3 → 1e-4	Adam	CosineAnnealing	25	1e-4	5 → partial unfreeze last 2 blocks
+ResNet50	1e-3 → 1e-4	Adam	StepLR(7, γ=0.5)	25	1e-4	5 → unfreeze layer4
+MobileNetV2	1e-3 → 5e-5	Adam	CosineAnnealing	30	1e-4	5 → unfreeze last 3 blocks
+EfficientNet-B0	1e-3 → 5e-5	AdamW	CosineAnnealing	25	1e-2	5 → unfreeze top 2 blocks
+DeiT-Small	5e-4 → 1e-5	AdamW	CosineWarmRestart	30	5e-2	10 → unfreeze last 4 blocks
+Swin-T	5e-4 → 1e-5	AdamW	CosineWarmRestart	30	5e-2	10 → unfreeze stages 3-4
+DINOv2-S	1e-3	Adam	StepLR(10, γ=0.1)	15	1e-4	Fully frozen (linear probe only)
+ConvNeXt-T	1e-3 → 5e-5	AdamW	CosineAnnealing	25	5e-2	5 → unfreeze stage 3-4
+Training protocol:
+
+Phase 1: Train only the classifier head (frozen backbone) for specified epochs
+Phase 2: Unfreeze specified layers, drop LR by 10×, continue training
+Early stopping with patience=5 on validation loss
+Use CrossEntropyLoss with class weights inversely proportional to class frequency (handles imbalance at loss level alongside SMOTE)
+Track: train_loss, val_loss, train_acc, val_acc per epoch
+Per-model outputs (after each model completes):
+
+Training curves plot (loss + accuracy, train vs val)
+Confusion matrix heatmap (on test set)
+Classification report (precision, recall, F1 per class)
+Per-class ROC curves with AUC
+Save best model checkpoint: results/models/{model_name}_best.pth
+Export per-model metrics to results/03_model_{N}_{name}_results.xlsx
+For DINOv2-Small specifically (Model 7): Use only linear probe (no fine-tuning of backbone at all), as DINOv2 is designed to work with frozen features — this is a key finding for the paper
+
+Phase 6: Hybrid Model 1 — CNN Ensemble (Model 9)
+Load cached features from FAISS for ResNet50, VGG16, MobileNetV2 (train/val/test)
+Concatenate features → dimensionality: ResNet50(2048) + VGG16(4096) + MobileNetV2(1280) = 7424-dim vector
+Apply PCA to reduce to 512 dimensions (avoid curse of dimensionality)
+Train a 2-layer MLP head: Linear(512, 256) → ReLU → Dropout(0.3) → Linear(256, 4)
+Use same training protocol (Adam, lr=1e-3, 30 epochs, early stopping)
+Also try a simple voting ensemble (majority vote from Models 1-3) as comparison
+Phase 7: Hybrid Model 2 — DINOv2 + XGBoost (Model 10)
+Load cached DINOv2 features from FAISS
+Apply optional PCA (256 components) for feature reduction
+Train XGBoost classifier with hyperparameter tuning:
+n_estimators: [100, 300, 500]
+max_depth: [4, 6, 8]
+learning_rate: [0.01, 0.05, 0.1]
+subsample: [0.8, 1.0]
+Use GridSearchCV with 5-fold stratified cross-validation
+This model is extremely CPU-friendly and often surprisingly strong
+Phase 8: Comprehensive Comparison & Publication Figures
+Master comparison table (exported to results/04_master_comparison.xlsx):
+Columns: Model, Accuracy, Precision (macro), Recall (macro), F1 (macro), AUC (macro), Params, Training Time, Inference Time
+Sorted by F1-macro
+Publication-quality visualizations (saved as 300 DPI PNGs):
+Grouped bar chart comparing all 10 models on Accuracy/F1/AUC
+Radar/spider chart showing per-class F1 for top 5 models
+Box plot of per-class accuracy across all models
+Heatmap: models × metrics matrix
+Training time vs performance scatter plot (efficiency frontier)
+Confusion matrix grid (2×5 subplot grid, all models)
+Grad-CAM attention maps for top 3 models on sample images (shows where model "looks")
+Statistical significance: McNemar's test between top-2 models
+Phase 9: Model Elimination & Final Ranking
+If any model achieves <70% test accuracy after full tuning, remove it and document the reason
+Rank surviving models and highlight:
+Best overall: highest F1-macro
+Best efficient: best accuracy / parameter-count ratio
+Best per class: which model handles which defect type best
+Export final summary to results/05_final_ranking.xlsx
+Phase 10: FAISS Nearest-Neighbor Demo
+As a bonus section, demonstrate FAISS k-NN classification directly:
+Build FAISS index on DINOv2 train features
+For each test image, find k=5 nearest neighbors
+Classify by majority vote
+Compare with Model 7 (linear probe) and Model 10 (XGBoost)
+This demonstrates the database reuse capability the user wanted
+Verification
+Each model cell prints test accuracy, F1-macro, and confusion matrix — verify values are reasonable (>70% for non-trivial models)
+All Excel files in results/ should be downloadable from Colab's file browser
+Re-run any cell after kernel restart — FAISS cache should load features from disk, not re-extract
+Total notebook runtime on Colab CPU: estimated 2–3 hours (one-time; subsequent runs ~15 min thanks to FAISS caching)
+Run !ls results/ at the end to verify all 5+ Excel files and 10+ PNG visualizations exist
+Decisions
+Classification only (no segmentation) — maximizes model count and comparison depth for the paper
+4-class with SMOTE + class-weighted loss — dual strategy to handle the 20-sample good class
+DINOv2-Small (not Giant) — the ViT-S/14 variant is CPU-feasible (~22M params) while still demonstrating foundation-model power
+ConvNeXt-Tiny replaces DINOv3 — DINOv3 is not publicly available; ConvNeXt is Meta's state-of-the-art CNN modernization, strong contrast to DINOv2
+FAISS IndexFlatL2 (exact search, no quantization) — dataset is small enough (1,220 images) that exact NN search is instant, and it serves as the caching/database layer
+224×224 resize — standard ImageNet input size, keeps all models comparable and CPU-friendly
+PCA before hybrid feature concatenation — avoids 7000+ dim feature explosion while preserving variance
